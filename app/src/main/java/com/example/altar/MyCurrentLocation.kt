@@ -17,7 +17,7 @@ class MyCurrentLocation(private val onLocationChangedListener: OnLocationChanged
     private lateinit var mLocationRequest: LocationRequest
 
     @Synchronized
-    protected fun buildGoogleApiClient(context: Context) {
+    fun buildGoogleApiClient(context: Context) {
         mGoogleApiClient = GoogleApiClient.Builder(context)
             .addConnectionCallbacks(this)
             .addOnConnectionFailedListener(this)

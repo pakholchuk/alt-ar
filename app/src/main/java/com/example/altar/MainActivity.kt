@@ -2,18 +2,25 @@ package com.example.altar
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.Camera
+import android.hardware.Camera
+import android.graphics.PixelFormat
+import android.location.Location
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.telephony.SmsMessage
 import android.view.LayoutInflater
 import android.view.SurfaceHolder
+import android.view.View
+import android.widget.Toast
 import androidx.lifecycle.LifecycleOwner
 import com.example.altar.databinding.ActivityMainBinding
 import com.netguru.arlocalizerview.ARLocalizerDependencyProvider
 import com.netguru.arlocalizerview.location.LocationData
+import java.lang.Exception
 import kotlin.math.abs
 import kotlin.math.atan
 import kotlin.math.max
+import kotlin.math.sqrt
 
 class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, OnLocationChangedListener, OnAzimuthChangedListener {
     private lateinit var binding: ActivityMainBinding
@@ -62,6 +69,12 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, OnLocationChan
     fun calculateDistance(): Double {
         var dX = mPoi.poiLatitude - mMyLatitude
         var dY = mPoi.poiLongitude - mMyLongitude
+        return sqrt(Math.pow(dX, 2.0) + Math.pow(dY, 2.0)) * 100000
+    }
+
+    fun calculateTheoreticalAzimuth(): Double {
+        var dX = mPoi.poiLatitude - mMyLatitude
+        var dY = mPoi.poiLongitude - mMyLongitude
 
         var tanPhi = abs(dY/dX)
         var phiAngle = atan(tanPhi)
@@ -105,8 +118,93 @@ class MainActivity : AppCompatActivity(), SurfaceHolder.Callback, OnLocationChan
         var rAzimuth = mAzimuthReal.toInt()
 
         var text: String = mPoi.poiName + " location:" +
-                "\n latitude: $TARGET_LATTITUDE" +
-                "  longitude: $TARGET_LONGITUDE" +
-                "\n Current location:"
+                " location:" +
+                 "\n latitude: " + TARGET_LATTITUDE + "  longitude: " + TARGET_LONGITUDE +
+                 "\n Current location:" +
+                 "\n Latitude: " + mMyLatitude       + "  Longitude: " + mMyLongitude +
+                 "\n " +
+                 "\n Target azimuth: " + tAzimuth +
+                " \n Current azimuth: " + rAzimuth +
+                " \n Distance: " + distance;
+    }
+
+    override fun onAzimuthChanged(azimuthFrom: Float, azimuthTo: Float) {
+        mAzimuthReal = azimuthTo.toDouble()
+        mAzimuthTheoretical = calculateTheoreticalAzimuth()
+        var distance = calculateDistance().toInt()
+
+        var minAngle = calculateAzimuthAccuracy(mAzimuthTheoretical)[0]
+        var maxAngle = calculateAzimuthAccuracy(mAzimuthTheoretical)[1]
+
+        if (isBetween(minAngle, maxAngle, mAzimuthReal) && distance <= DISTANCE_ACCURACY)
+            binding.icon.visibility = View.VISIBLE
+        else
+            binding.icon.visibility = View.INVISIBLE
+        updateDescription()
+    }
+
+    override fun onLocationChanged(location: Location) {
+        mMyLatitude = location.latitude
+        mMyLongitude = location.longitude
+        mAzimuthTheoretical = calculateTheoreticalAzimuth()
+
+        Toast.makeText(this, "lat $mMyLatitude   lon $mMyLongitude", Toast.LENGTH_SHORT).show()
+        if (mAzimuthReal == 0.0) {
+            if (calculateDistance() <= DISTANCE_ACCURACY)
+                binding.icon.visibility = View.VISIBLE
+            else binding.icon.visibility = View.INVISIBLE
+        }
+        updateDescription()
+    }
+
+    override fun onStop() {
+        myCurrentAzimuth.stop()
+        myCurrentLocation.stop()
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        myCurrentLocation.start()
+        myCurrentAzimuth.start()
+    }
+
+    private fun setupListeners() {
+        myCurrentLocation = MyCurrentLocation(this)
+        myCurrentLocation.buildGoogleApiClient(this)
+        myCurrentLocation.start()
+
+        myCurrentAzimuth = MyCurrentAzimuth(this, this)
+        myCurrentAzimuth.start()
+    }
+
+    private fun setupLayout() {
+        window.setFormat(PixelFormat.UNKNOWN)
+        mSurfaceHolder = binding.surfaceView.holder
+        mSurfaceHolder.addCallback(this)
+        mSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS)
+    }
+
+    override fun surfaceCreated(p0: SurfaceHolder) {
+        TODO("Not yet implemented")
+    }
+
+    override fun surfaceChanged(p0: SurfaceHolder, p1: Int, p2: Int, p3: Int) {
+        if (isCameraOn) {
+            camera.stopPreview()
+            isCameraOn = false
+        }
+        if (this::camera.isInitialized) {
+            try {
+                camera.setPreviewDisplay(mSurfaceHolder)
+                camera.startPreview()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    override fun surfaceDestroyed(p0: SurfaceHolder) {
+        TODO("Not yet implemented")
     }
 }
